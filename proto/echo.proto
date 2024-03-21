@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package grpc.example.echo;
+
+message EchoRequest {
+    string message = 1;
+}
+
+message EchoResponse {
+    string message = 1;
+}
+
+service Echo {
+    rpc UnaryEcho(EchoRequest) returns (EchoResponse) {}
+    // rpc ServerStreamEcho(EchoRequest) returns (stream EchoResponse) {}
+    // rpc ClientStreamEcho(stream EchoRequest) returns (EchoResponse) {}
+    // rpc BidirectionalStreamEcho(stream EchoRequest) returns (stream EchoResponse) {}
+}
