@@ -1,5 +1,5 @@
 use echo::{echo_client::EchoClient, EchoRequest};
-use tokio_stream::{Stream, StreamExt};
+use tokio_stream::StreamExt;
 use tonic::transport::Channel;
 
 pub mod echo {
@@ -38,7 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     call_unary_echo(&mut client, "Tonic").await;
 
-    call_stream_echo(&mut client, 10).await;
+    call_stream_echo(&mut client, 5).await;
 
     Ok(())
 }
