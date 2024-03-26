@@ -13,6 +13,6 @@ message EchoResponse {
 service Echo {
     rpc UnaryEcho(EchoRequest) returns (EchoResponse) {}
     rpc ServerStreamEcho(EchoRequest) returns (stream EchoResponse) {}
-    // rpc ClientStreamEcho(stream EchoRequest) returns (EchoResponse) {}
-    // rpc BidirectionalStreamEcho(stream EchoRequest) returns (stream EchoResponse) {}
+    rpc ClientStreamEcho(stream EchoRequest) returns (EchoResponse) {}
+    rpc BidirectionalStreamEcho(stream EchoRequest) returns (stream EchoResponse) {}
 }

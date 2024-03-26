@@ -1,10 +1,11 @@
+use std::io::ErrorKind;
 use std::net::ToSocketAddrs;
 use std::pin::Pin;
 use std::time::Duration;
 
 use tokio::sync::mpsc;
 use tokio_stream::{wrappers::ReceiverStream, Stream, StreamExt};
-use tonic::{transport::Server, Request, Response, Status};
+use tonic::{transport::Server, Request, Response, Status, Streaming};
 
 use echo::{EchoRequest, EchoResponse};
 
@@ -14,6 +15,27 @@ pub mod echo {
 
 type EchoResult<T> = Result<Response<T>, Status>;
 type ResponseStream = Pin<Box<dyn Stream<Item = Result<EchoResponse, Status>> + Send>>;
+
+fn match_for_io_error(status: &Status) -> Option<&std::io::Error> {
+    let mut err: &(dyn std::error::Error + 'static) = status;
+
+    loop {
+        if let Some(io_err) = err.downcast_ref::<std::io::Error>() {
+            return Some(io_err);
+        }
+
+        if let Some(h2_err) = err.downcast_ref::<h2::Error>() {
+            if let Some(io_err) = h2_err.get_io() {
+                return Some(io_err);
+            }
+        }
+
+        err = match err.source() {
+            Some(err) => err,
+            None => return None,
+        };
+    }
+}
 
 #[derive(Debug, Default)]
 pub struct EchoServer {}
@@ -56,6 +78,59 @@ impl echo::echo_server::Echo for EchoServer {
                     Err(_) => {
                         tracing::info!("Closed connection");
                         break;
+                    }
+                }
+            }
+            tracing::info!("stream done");
+        });
+
+        let output_stream = ReceiverStream::new(rx);
+
+        Ok(Response::new(Box::pin(output_stream)))
+    }
+
+    type BidirectionalStreamEchoStream = ResponseStream;
+
+    #[tracing::instrument]
+    async fn client_stream_echo(
+        &self,
+        _req: Request<Streaming<EchoRequest>>,
+    ) -> EchoResult<EchoResponse> {
+        Err(Status::unimplemented("not implemented"))
+    }
+
+    #[tracing::instrument]
+    async fn bidirectional_stream_echo(
+        &self,
+        req: Request<Streaming<EchoRequest>>,
+    ) -> EchoResult<Self::BidirectionalStreamEchoStream> {
+        let mut stream = req.into_inner();
+        let (tx, rx) = mpsc::channel(128);
+
+        tokio::spawn(async move {
+            while let Some(result) = stream.next().await {
+                match result {
+                    Ok(v) => {
+                        tx.send(Ok(EchoResponse { message: v.message }))
+                            .await
+                            .expect("working tx");
+                        tracing::info!("Suucess received message");
+                    }
+                    Err(err) => {
+                        if let Some(io_err) = match_for_io_error(&err) {
+                            if io_err.kind() == ErrorKind::BrokenPipe {
+                                tracing::info!("Broken pipe");
+                                break;
+                            }
+                        }
+
+                        match tx.send(Err(err)).await {
+                            Ok(_) => (),
+                            Err(err) => {
+                                tracing::error!("{err}");
+                                break;
+                            }
+                        }
                     }
                 }
             }
